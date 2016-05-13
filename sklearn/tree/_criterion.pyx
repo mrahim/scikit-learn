@@ -198,9 +198,9 @@ cdef class Criterion:
         self.children_impurity(&impurity_left, &impurity_right)
 
         return ((self.weighted_n_node_samples / self.weighted_n_samples) *
-                (impurity - (self.weighted_n_right / 
+                (impurity - (self.weighted_n_right /
                              self.weighted_n_node_samples * impurity_right)
-                          - (self.weighted_n_left / 
+                          - (self.weighted_n_left /
                              self.weighted_n_node_samples * impurity_left)))
 
 
@@ -263,7 +263,7 @@ cdef class ClassificationCriterion(Criterion):
         self.sum_left = <double*> calloc(n_elements, sizeof(double))
         self.sum_right = <double*> calloc(n_elements, sizeof(double))
 
-        if (self.sum_total == NULL or 
+        if (self.sum_total == NULL or
                 self.sum_left == NULL or
                 self.sum_right == NULL):
             raise MemoryError()
@@ -718,11 +718,12 @@ cdef class RegressionCriterion(Criterion):
         self.sum_right = NULL
 
         # Allocate memory for the accumulators
+        # XXX no need for n_output size ??
         self.sum_total = <double*> calloc(n_outputs, sizeof(double))
         self.sum_left = <double*> calloc(n_outputs, sizeof(double))
         self.sum_right = <double*> calloc(n_outputs, sizeof(double))
 
-        if (self.sum_total == NULL or 
+        if (self.sum_total == NULL or
                 self.sum_left == NULL or
                 self.sum_right == NULL):
             raise MemoryError()
@@ -847,7 +848,7 @@ cdef class RegressionCriterion(Criterion):
 
                 self.weighted_n_left -= w
 
-        self.weighted_n_right = (self.weighted_n_node_samples - 
+        self.weighted_n_right = (self.weighted_n_node_samples -
                                  self.weighted_n_left)
         for k in range(self.n_outputs):
             sum_right[k] = sum_total[k] - sum_left[k]
@@ -957,7 +958,7 @@ cdef class MSE(RegressionCriterion):
 
         for k in range(self.n_outputs):
             impurity_left[0] -= (sum_left[k] / self.weighted_n_left) ** 2.0
-            impurity_right[0] -= (sum_right[k] / self.weighted_n_right) ** 2.0 
+            impurity_right[0] -= (sum_right[k] / self.weighted_n_right) ** 2.0
 
         impurity_left[0] /= self.n_outputs
         impurity_right[0] /= self.n_outputs
@@ -1019,6 +1020,113 @@ cdef class FriedmanMSE(MSE):
         diff = (self.weighted_n_right * total_sum_left -
                 self.weighted_n_left * total_sum_right) / self.n_outputs
 
-        return (diff * diff / (self.weighted_n_left * self.weighted_n_right * 
+        return (diff * diff / (self.weighted_n_left * self.weighted_n_right *
                                self.weighted_n_node_samples))
-                               
+
+# XXX : max IG instead of sum ?
+cdef class MaxMSE(RegressionCriterion):
+    """Mean squared error impurity criterion.
+
+        MSE = var_left + var_right
+
+        In the multitask setting, we take max(IG) rather than the sum(IG)
+    """
+    cdef double node_impurity(self) nogil:
+        """Evaluate the impurity of the current node, i.e. the impurity of
+           samples[start:end]."""
+
+        cdef double* sum_total = self.sum_total
+        cdef double impurity
+        cdef double max_impurity
+        cdef double n
+        cdef SIZE_t k
+
+        n = self.weighted_n_node_samples
+        max_impurity = sum_total[0] * (1 - 1/n)**2.0
+        for k in range(1, self.n_outputs):
+            impurity = sum_total[k] * (1 - 1/n)**2.0
+            if impurity > max_impurity:
+                max_impurity = impurity
+        """
+        impurity = self.sq_sum_total / self.weighted_n_node_samples
+        # so far, we have the mean y
+        # rather than using weighted sum, keep the max
+        for k in range(self.n_outputs):
+            impurity -= (sum_total[k] / self.weighted_n_node_samples)**2.0
+
+        return impurity / self.n_outputs
+        """
+        return max_impurity
+
+    cdef double proxy_impurity_improvement(self) nogil:
+        """Compute a proxy of the impurity reduction
+
+        This method is used to speed up the search for the best split.
+        It is a proxy quantity such that the split that maximizes this value
+        also maximizes the impurity improvement. It neglects all constant terms
+        of the impurity decrease for a given split.
+
+        The absolute impurity improvement is only computed by the
+        impurity_improvement method once the best split has been found.
+        """
+
+        cdef double* sum_left = self.sum_left
+        cdef double* sum_right = self.sum_right
+
+        cdef SIZE_t k
+        cdef double proxy_impurity_left = 0.0
+        cdef double proxy_impurity_right = 0.0
+
+        for k in range(self.n_outputs):
+            proxy_impurity_left += sum_left[k] * sum_left[k]
+            proxy_impurity_right += sum_right[k] * sum_right[k]
+
+        return (proxy_impurity_left / self.weighted_n_left +
+                proxy_impurity_right / self.weighted_n_right)
+
+    cdef void children_impurity(self, double* impurity_left,
+                                double* impurity_right) nogil:
+        """Evaluate the impurity in children nodes, i.e. the impurity of the
+           left child (samples[start:pos]) and the impurity the right child
+           (samples[pos:end])."""
+
+
+        cdef DOUBLE_t* y = self.y
+        cdef DOUBLE_t* sample_weight = self.sample_weight
+        cdef SIZE_t* samples = self.samples
+        cdef SIZE_t pos = self.pos
+        cdef SIZE_t start = self.start
+
+        cdef double* sum_left = self.sum_left
+        cdef double* sum_right = self.sum_right
+
+        cdef double sq_sum_left = 0.0
+        cdef double sq_sum_right
+
+        cdef SIZE_t i
+        cdef SIZE_t p
+        cdef SIZE_t k
+        cdef DOUBLE_t w = 1.0
+        cdef DOUBLE_t y_ik
+
+        for p in range(start, pos):
+            i = samples[p]
+
+            if sample_weight != NULL:
+                w = sample_weight[i]
+
+            for k in range(self.n_outputs):
+                y_ik = y[i * self.y_stride + k]
+                sq_sum_left += w * y_ik * y_ik
+
+        sq_sum_right = self.sq_sum_total - sq_sum_left
+
+        impurity_left[0] = sq_sum_left / self.weighted_n_left
+        impurity_right[0] = sq_sum_right / self.weighted_n_right
+
+        for k in range(self.n_outputs):
+            impurity_left[0] -= (sum_left[k] / self.weighted_n_left) ** 2.0
+            impurity_right[0] -= (sum_right[k] / self.weighted_n_right) ** 2.0
+
+        impurity_left[0] /= self.n_outputs
+        impurity_right[0] /= self.n_outputs
