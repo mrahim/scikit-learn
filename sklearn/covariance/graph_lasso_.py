@@ -707,7 +707,7 @@ def _objective2(mle, precision_, alpha, beta):
     cost = - 2. * log_likelihood(mle, precision_) + p * np.log(2 * np.pi)
     cost += alpha * (np.abs(precision_).sum()
                      - np.abs(np.diag(precision_)).sum())
-    cost += beta * np.sum(precision_**2)
+    # cost += beta * np.sum(precision_**2)
     return cost
 
 
@@ -721,15 +721,15 @@ def _dual_gap2(emp_cov, precision_, alpha, beta):
     gap -= precision_.shape[0]
     gap += alpha * (np.abs(precision_).sum()
                     - np.abs(np.diag(precision_)).sum())
-    gap += beta * np.sum(precision_**2)
+    # gap += beta * np.sum(precision_**2)
     return gap
 
 
 # The g-lasso algorithm adding a l2 penalty
 def graph_lasso2(emp_cov, alpha, beta, cov_init=None, mode='cd', tol=1e-4,
-                enet_tol=1e-4, max_iter=100, verbose=False,
-                return_costs=False, eps=np.finfo(np.float64).eps,
-                return_n_iter=False):
+                 enet_tol=1e-4, max_iter=100, verbose=False,
+                 return_costs=False, eps=np.finfo(np.float64).eps,
+                 return_n_iter=False):
     """l1-penalized covariance estimator
 
     Read more in the :ref:`User Guide <sparse_inverse_covariance>`.
@@ -866,7 +866,8 @@ def graph_lasso2(emp_cov, alpha, beta, cov_init=None, mode='cd', tol=1e-4,
                                   / (precision_[idx, idx] + 1000 * eps))
                         coefs, _, _, _ = cd_fast.enet_coordinate_descent_gram(
                             coefs, alpha, beta, sub_covariance, row, row,
-                            max_iter, enet_tol, check_random_state(None), False)
+                            max_iter, enet_tol, check_random_state(None),
+                            False)
                     else:
                         # Use LARS
                         _, _, coefs = lars_path(
@@ -916,7 +917,6 @@ def graph_lasso2(emp_cov, alpha, beta, cov_init=None, mode='cd', tol=1e-4,
             return covariance_, precision_, i + 1
         else:
             return covariance_, precision_
-
 
 
 class GraphLasso2(EmpiricalCovariance):
@@ -1007,4 +1007,344 @@ class GraphLasso2(EmpiricalCovariance):
             mode=self.mode, tol=self.tol,
             enet_tol=self.enet_tol, max_iter=self.max_iter,
             verbose=self.verbose, return_n_iter=True)
+        return self
+
+
+# Cross-validation with GraphLasso
+def graph_lasso_path2(X, alphas, cov_init=None, X_test=None, mode='cd',
+                      tol=1e-4, enet_tol=1e-4, max_iter=100, verbose=False):
+    """l1-penalized covariance estimator along a path of decreasing alphas
+
+    Read more in the :ref:`User Guide <sparse_inverse_covariance>`.
+
+    Parameters
+    ----------
+    X : 2D ndarray, shape (n_samples, n_features)
+        Data from which to compute the covariance estimate.
+
+    alphas : list of positive floats
+        The list of regularization parameters, decreasing order.
+
+    X_test : 2D array, shape (n_test_samples, n_features), optional
+        Optional test matrix to measure generalisation error.
+
+    mode : {'cd', 'lars'}
+        The Lasso solver to use: coordinate descent or LARS. Use LARS for
+        very sparse underlying graphs, where p > n. Elsewhere prefer cd
+        which is more numerically stable.
+
+    tol : positive float, optional
+        The tolerance to declare convergence: if the dual gap goes below
+        this value, iterations are stopped.
+
+    enet_tol : positive float, optional
+        The tolerance for the elastic net solver used to calculate the descent
+        direction. This parameter controls the accuracy of the search direction
+        for a given column update, not of the overall parameter estimate. Only
+        used for mode='cd'.
+
+    max_iter : integer, optional
+        The maximum number of iterations.
+
+    verbose : integer, optional
+        The higher the verbosity flag, the more information is printed
+        during the fitting.
+
+    Returns
+    -------
+    covariances_ : List of 2D ndarray, shape (n_features, n_features)
+        The estimated covariance matrices.
+
+    precisions_ : List of 2D ndarray, shape (n_features, n_features)
+        The estimated (sparse) precision matrices.
+
+    scores_ : List of float
+        The generalisation error (log-likelihood) on the test data.
+        Returned only if test data is passed.
+    """
+    inner_verbose = max(0, verbose - 1)
+    emp_cov = empirical_covariance(X)
+    if cov_init is None:
+        covariance_ = emp_cov.copy()
+    else:
+        covariance_ = cov_init
+    covariances_ = list()
+    precisions_ = list()
+    scores_ = list()
+    if X_test is not None:
+        test_emp_cov = empirical_covariance(X_test)
+
+    for alpha in alphas:
+        try:
+            # Capture the errors, and move on
+            covariance_, precision_ = graph_lasso(
+                emp_cov, alpha=alpha, cov_init=covariance_, mode=mode, tol=tol,
+                enet_tol=enet_tol, max_iter=max_iter, verbose=inner_verbose)
+            covariances_.append(covariance_)
+            precisions_.append(precision_)
+            if X_test is not None:
+                this_score = log_likelihood(test_emp_cov, precision_)
+        except FloatingPointError:
+            this_score = -np.inf
+            covariances_.append(np.nan)
+            precisions_.append(np.nan)
+        if X_test is not None:
+            if not np.isfinite(this_score):
+                this_score = -np.inf
+            scores_.append(this_score)
+        if verbose == 1:
+            sys.stderr.write('.')
+        elif verbose > 1:
+            if X_test is not None:
+                print('[graph_lasso_path] alpha: %.2e, score: %.2e'
+                      % (alpha, this_score))
+            else:
+                print('[graph_lasso_path] alpha: %.2e' % alpha)
+    if X_test is not None:
+        return covariances_, precisions_, scores_
+    return covariances_, precisions_
+
+
+class GraphLassoCV2(GraphLasso):
+    """Sparse inverse covariance w/ cross-validated choice of the l1 penalty
+
+    Read more in the :ref:`User Guide <sparse_inverse_covariance>`.
+
+    Parameters
+    ----------
+    alphas : integer, or list positive float, optional
+        If an integer is given, it fixes the number of points on the
+        grids of alpha to be used. If a list is given, it gives the
+        grid to be used. See the notes in the class docstring for
+        more details.
+
+    n_refinements: strictly positive integer
+        The number of times the grid is refined. Not used if explicit
+        values of alphas are passed.
+
+    cv : int, cross-validation generator or an iterable, optional
+        Determines the cross-validation splitting strategy.
+        Possible inputs for cv are:
+
+        - None, to use the default 3-fold cross-validation,
+        - integer, to specify the number of folds.
+        - An object to be used as a cross-validation generator.
+        - An iterable yielding train/test splits.
+
+        For integer/None inputs :class:`KFold` is used.
+
+        Refer :ref:`User Guide <cross_validation>` for the various
+        cross-validation strategies that can be used here.
+
+    tol: positive float, optional
+        The tolerance to declare convergence: if the dual gap goes below
+        this value, iterations are stopped.
+
+    enet_tol : positive float, optional
+        The tolerance for the elastic net solver used to calculate the descent
+        direction. This parameter controls the accuracy of the search direction
+        for a given column update, not of the overall parameter estimate. Only
+        used for mode='cd'.
+
+    max_iter: integer, optional
+        Maximum number of iterations.
+
+    mode: {'cd', 'lars'}
+        The Lasso solver to use: coordinate descent or LARS. Use LARS for
+        very sparse underlying graphs, where number of features is greater
+        than number of samples. Elsewhere prefer cd which is more numerically
+        stable.
+
+    n_jobs: int, optional
+        number of jobs to run in parallel (default 1).
+
+    verbose: boolean, optional
+        If verbose is True, the objective function and duality gap are
+        printed at each iteration.
+
+    assume_centered : Boolean
+        If True, data are not centered before computation.
+        Useful when working with data whose mean is almost, but not exactly
+        zero.
+        If False, data are centered before computation.
+
+    Attributes
+    ----------
+    covariance_ : numpy.ndarray, shape (n_features, n_features)
+        Estimated covariance matrix.
+
+    precision_ : numpy.ndarray, shape (n_features, n_features)
+        Estimated precision matrix (inverse covariance).
+
+    alpha_ : float
+        Penalization parameter selected.
+
+    cv_alphas_ : list of float
+        All penalization parameters explored.
+
+    `grid_scores`: 2D numpy.ndarray (n_alphas, n_folds)
+        Log-likelihood score on left-out data across folds.
+
+    n_iter_ : int
+        Number of iterations run for the optimal alpha.
+
+    See Also
+    --------
+    graph_lasso, GraphLasso
+
+    Notes
+    -----
+    The search for the optimal penalization parameter (alpha) is done on an
+    iteratively refined grid: first the cross-validated scores on a grid are
+    computed, then a new refined grid is centered around the maximum, and so
+    on.
+
+    One of the challenges which is faced here is that the solvers can
+    fail to converge to a well-conditioned estimate. The corresponding
+    values of alpha then come out as missing values, but the optimum may
+    be close to these missing values.
+    """
+
+    def __init__(self, alphas=6, n_refinements=1, cv=None, tol=1e-4,
+                 enet_tol=1e-4, max_iter=100, mode='cd', n_jobs=1,
+                 verbose=False, assume_centered=False):
+        self.alphas = alphas
+        self.n_refinements = n_refinements
+        self.mode = mode
+        self.tol = tol
+        self.enet_tol = enet_tol
+        self.max_iter = max_iter
+        self.verbose = verbose
+        self.cv = cv
+        self.n_jobs = n_jobs
+        self.assume_centered = assume_centered
+        # The base class needs this for the score method
+        self.store_precision = True
+
+    def fit(self, X, y=None):
+        """Fits the GraphLasso covariance model to X.
+
+        Parameters
+        ----------
+        X : ndarray, shape (n_samples, n_features)
+            Data from which to compute the covariance estimate
+        """
+        # Covariance does not make sense for a single feature
+        X = check_array(X, ensure_min_features=2, estimator=self)
+        if self.assume_centered:
+            self.location_ = np.zeros(X.shape[1])
+        else:
+            self.location_ = X.mean(0)
+        emp_cov = empirical_covariance(
+            X, assume_centered=self.assume_centered)
+
+        cv = check_cv(self.cv, y, classifier=False)
+
+        # List of (alpha, scores, covs)
+        path = list()
+        n_alphas = self.alphas
+        inner_verbose = max(0, self.verbose - 1)
+
+        if isinstance(n_alphas, collections.Sequence):
+            alphas = self.alphas
+            n_refinements = 1
+        else:
+            n_refinements = self.n_refinements
+            alpha_1 = alpha_max(emp_cov)
+            alpha_0 = 1e-2 * alpha_1
+            alphas = np.logspace(np.log10(alpha_0), np.log10(alpha_1),
+                                 n_alphas)[::-1]
+
+        t0 = time.time()
+        for i in range(n_refinements):
+            with warnings.catch_warnings():
+                # No need to see the convergence warnings on this grid:
+                # they will always be points that will not converge
+                # during the cross-validation
+                warnings.simplefilter('ignore', ConvergenceWarning)
+                # Compute the cross-validated loss on the current grid
+
+                # NOTE: Warm-restarting graph_lasso_path has been tried, and
+                # this did not allow to gain anything (same execution time with
+                # or without).
+                this_path = Parallel(
+                    n_jobs=self.n_jobs,
+                    verbose=self.verbose
+                )(delayed(graph_lasso_path2)(X[train], alphas=alphas,
+                                             X_test=X[test], mode=self.mode,
+                                             tol=self.tol,
+                                             enet_tol=self.enet_tol,
+                                             max_iter=int(.1 * self.max_iter),
+                                             verbose=inner_verbose)
+                  for train, test in cv.split(X, y))
+
+            # Little danse to transform the list in what we need
+            covs, _, scores = zip(*this_path)
+            covs = zip(*covs)
+            scores = zip(*scores)
+            path.extend(zip(alphas, scores, covs))
+            path = sorted(path, key=operator.itemgetter(0), reverse=True)
+
+            # Find the maximum (avoid using built in 'max' function to
+            # have a fully-reproducible selection of the smallest alpha
+            # in case of equality)
+            best_score = -np.inf
+            last_finite_idx = 0
+            for index, (alpha, scores, _) in enumerate(path):
+                this_score = np.mean(scores)
+                if this_score >= .1 / np.finfo(np.float64).eps:
+                    this_score = np.nan
+                if np.isfinite(this_score):
+                    last_finite_idx = index
+                if this_score >= best_score:
+                    best_score = this_score
+                    best_index = index
+
+            # Refine the grid
+            if best_index == 0:
+                # We do not need to go back: we have chosen
+                # the highest value of alpha for which there are
+                # non-zero coefficients
+                alpha_1 = path[0][0]
+                alpha_0 = path[1][0]
+            elif (best_index == last_finite_idx
+                    and not best_index == len(path) - 1):
+                # We have non-converged models on the upper bound of the
+                # grid, we need to refine the grid there
+                alpha_1 = path[best_index][0]
+                alpha_0 = path[best_index + 1][0]
+            elif best_index == len(path) - 1:
+                alpha_1 = path[best_index][0]
+                alpha_0 = 0.01 * path[best_index][0]
+            else:
+                alpha_1 = path[best_index - 1][0]
+                alpha_0 = path[best_index + 1][0]
+
+            if not isinstance(n_alphas, collections.Sequence):
+                alphas = np.logspace(np.log10(alpha_1), np.log10(alpha_0),
+                                     n_alphas + 2)
+                alphas = alphas[1:-1]
+
+            if self.verbose and n_refinements > 1:
+                print('[GraphLassoCV] Done refinement % 2i out of %i: % 3is'
+                      % (i + 1, n_refinements, time.time() - t0))
+
+        path = list(zip(*path))
+        grid_scores = list(path[1])
+        alphas = list(path[0])
+        # Finally, compute the score with alpha = 0
+        alphas.append(0)
+        grid_scores.append(cross_val_score(EmpiricalCovariance(), X,
+                                           cv=cv, n_jobs=self.n_jobs,
+                                           verbose=inner_verbose))
+        self.grid_scores = np.array(grid_scores)
+        best_alpha = alphas[best_index]
+        self.alpha_ = best_alpha
+        self.cv_alphas_ = alphas
+
+        # Finally fit the model with the selected alpha
+        self.covariance_, self.precision_, self.n_iter_ = graph_lasso(
+            emp_cov, alpha=best_alpha, mode=self.mode, tol=self.tol,
+            enet_tol=self.enet_tol, max_iter=self.max_iter,
+            verbose=inner_verbose, return_n_iter=True)
         return self
