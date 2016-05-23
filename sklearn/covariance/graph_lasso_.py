@@ -1434,6 +1434,7 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
     diagonal coefficients are not penalized.
 
     """
+    alpha = alpha_matrix
     _, n_features = emp_cov.shape
     if alpha == 0:
         if return_costs:
@@ -1489,11 +1490,11 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
                         coefs, _, _, _ = cd_fast.enet_coordinate_descent_gram(
                             coefs, alpha, 0, sub_covariance, row, row,
                             max_iter, enet_tol, check_random_state(None), False)
-                        np.save('/volatile2/mehdi/tmp/cd_prior_' + str(idx),
-                                coefs=coefs, alpha=alpha,
-                                sub_covariance=sub_covariance,
-                                row=row, idx=idx, n_features=n_features,
-                                precision=precision_, max_iter=max_iter)
+                        np.savez('/volatile2/mehdi/tmp/cd_prior_' + str(idx),
+                                 coefs=coefs, alpha=alpha,
+                                 sub_covariance=sub_covariance,
+                                 row=row, idx=idx, n_features=n_features,
+                                 precision=precision_, max_iter=max_iter)
                     else:
                         # Use LARS
                         _, _, coefs = lars_path(
@@ -1624,8 +1625,9 @@ class GraphLassoPrior(EmpiricalCovariance):
             self.location_ = X.mean(0)
         emp_cov = empirical_covariance(
             X, assume_centered=self.assume_centered)
-        self.covariance_, self.precision_, self.n_iter_ = graph_lasso(
-            emp_cov, alpha=self.alpha, mode=self.mode, tol=self.tol,
+        self.covariance_, self.precision_, self.n_iter_ = graph_lasso_prior(
+            emp_cov, alpha_matrix=self.alpha_matrix, mode=self.mode,
+            tol=self.tol,
             enet_tol=self.enet_tol, max_iter=self.max_iter,
             verbose=self.verbose, return_n_iter=True)
         return self
