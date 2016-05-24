@@ -509,6 +509,7 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
     cdef double[:] H = np.dot(Q, w)
 
     cdef double[:] XtA = np.zeros(n_features)
+    cdef double[:] X_dbg = np.zeros(max_iter)
     cdef double tmp
     cdef double w_ii
     cdef double d_w_max
@@ -584,6 +585,7 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                 # q_dot_w = np.dot(w, q)
                 q_dot_w = ddot(n_features, w_ptr, 1, q_ptr, 1)
 
+                # XtA is the residual = y - Xw^(k)
                 for ii in range(n_features):
                     XtA[ii] = q[ii] - H[ii] - beta * w[ii]
                 if positive:
@@ -591,6 +593,7 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                 else:
                     dual_norm_XtA = abs_max(n_features, XtA_ptr)
 
+                X_dbg[n_iter] = dual_norm_XtA
                 # temp = np.sum(w * H)
                 tmp = 0.0
                 for ii in range(n_features):
@@ -600,6 +603,9 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                 # w_norm2 = np.dot(w, w)
                 w_norm2 = ddot(n_features, &w[0], 1, &w[0], 1)
 
+                # check whether current dual point is in the dual feasible
+                # polytope: P := {z \in R^n | ||X^Tz||_infty :=
+                #                              max_j |(X^T)_j z| <= \alpha }
                 if (dual_norm_XtA > alpha):
                     const = alpha / dual_norm_XtA
                     A_norm2 = R_norm2 * (const ** 2)
@@ -617,7 +623,7 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                     # return if we reached desired tolerance
                     break
 
-    return np.asarray(w), gap, tol, n_iter + 1
+    return np.asarray(w), gap, tol, n_iter + 1, np.asarray(X_dbg)
 
 
 @cython.boundscheck(False)
@@ -807,7 +813,9 @@ def enet_coordinate_descent_multi_task(double[::1, :] W, double l1_reg,
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta,
+def enet_coordinate_descent_gram_prior(double[:] w,
+                                       double[:] alpha,
+                                       double beta,
                                        np.ndarray[double, ndim=2, mode='c'] Q,
                                        np.ndarray[double, ndim=1, mode='c'] q,
                                        np.ndarray[double, ndim=1] y,
@@ -833,6 +841,8 @@ def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta
     cdef double[:] H = np.dot(Q, w)
 
     cdef double[:] XtA = np.zeros(n_features)
+    cdef double[:] X_dbg = np.zeros(max_iter)
+    cdef double f_dbg
     cdef double tmp
     cdef double w_ii
     cdef double d_w_max
@@ -900,6 +910,8 @@ def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta
                 if fabs(w[ii]) > w_max:
                     w_max = fabs(w[ii])
 
+            # XXX X_dbg[n_iter] = (d_w_max / w_max)
+
             if w_max == 0.0 or d_w_max / w_max < d_w_tol or n_iter == max_iter - 1:
                 # the biggest coordinate update of this iteration was smaller than
                 # the tolerance: check the duality gap as ultimate stopping
@@ -910,11 +922,13 @@ def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta
 
                 for ii in range(n_features):
                     XtA[ii] = q[ii] - H[ii] - beta * w[ii]
+                    XtA[ii] /= alpha[ii]
                 if positive:
                     dual_norm_XtA = max(n_features, XtA_ptr)
                 else:
                     dual_norm_XtA = abs_max(n_features, XtA_ptr)
 
+                X_dbg[n_iter] = dual_norm_XtA
                 # temp = np.sum(w * H)
                 tmp = 0.0
                 for ii in range(n_features):
@@ -924,15 +938,10 @@ def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta
                 # w_norm2 = np.dot(w, w)
                 w_norm2 = ddot(n_features, &w[0], 1, &w[0], 1)
 
-                # Lipschitz ?
-                # replace alpha by alphamax ?
-                alpha_sum = 0.0
-                for ii in range(n_features):
-                    alpha_sum += alpha[ii]
-                alpha_sum /= n_features
+                # tmp is alpha_sum
                 # if (dual_norm_XtA > alpha):
-                if (dual_norm_XtA > alpha_sum):
-                    const = alpha_sum / dual_norm_XtA
+                if (dual_norm_XtA > 1):
+                    const = 1 / dual_norm_XtA
                     A_norm2 = R_norm2 * (const ** 2)
                     gap = 0.5 * (R_norm2 + A_norm2)
                 else:
@@ -941,11 +950,12 @@ def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta
 
                 # The call to dasum is equivalent to the L1 norm of w
                 # replace alpha by alpha[ii] in dasum
-                l1_sum = 0.0
+                # l1_sum is tmp
+                tmp = 0.0
                 for ii in range(n_features):
-                    l1_sum += alpha[ii] * w[ii]
-                gap += l1_sum - const * y_norm2 + const * q_dot_w +
-                       0.5 * beta * (1 + const ** 2) * w_norm2)
+                    tmp += alpha[ii] * w[ii]
+                gap += (tmp - const * y_norm2 + const * q_dot_w +
+                        0.5 * beta * (1 + const ** 2) * w_norm2)
                 # gap += (alpha * dasum(n_features, &w[0], 1) -
                 #         const * y_norm2 +  const * q_dot_w +
                 #         0.5 * beta * (1 + const ** 2) * w_norm2)
@@ -954,4 +964,4 @@ def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta
                     # return if we reached desired tolerance
                     break
 
-    return np.asarray(w), gap, tol, n_iter + 1
+    return np.asarray(w), gap, tol, n_iter + 1, np.asarray(X_dbg)
