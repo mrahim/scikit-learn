@@ -216,7 +216,7 @@ def graph_lasso(emp_cov, alpha, cov_init=None, mode='cd', tol=1e-4,
                             coefs, alpha, 0, sub_covariance, row, row,
                             max_iter, enet_tol, check_random_state(None), False)
                         print(i, idx, gap_enet, tol_enet, iter_enet)
-                        print(wmax)
+                        # print(wmax)
                     else:
                         # Use LARS
                         _, _, coefs = lars_path(
@@ -722,7 +722,7 @@ def _dual_gap2(emp_cov, precision_, alpha, beta):
     gap -= precision_.shape[0]
     gap += alpha * (np.abs(precision_).sum()
                     - np.abs(np.diag(precision_)).sum())
-    # gap += beta * np.sum(precision_**2)
+     # gap += beta * np.sum(precision_**2)
     return gap
 
 
@@ -865,8 +865,8 @@ def graph_lasso2(emp_cov, alpha, beta, cov_init=None, mode='cd', tol=1e-4,
                         # Use coordinate descent
                         coefs = -(precision_[indices != idx, idx]
                                   / (precision_[idx, idx] + 1000 * eps))
-                        coefs, _, _, _ = cd_fast.enet_coordinate_descent_gram(
-                            coefs, alpha, beta, sub_covariance, row, row,
+                        coefs, _, _, _, _ = cd_fast.enet_coordinate_descent_gram(
+                            coefs, alpha, 0, sub_covariance, row, row,
                             max_iter, enet_tol, check_random_state(None),
                             False)
                     else:
@@ -1362,8 +1362,8 @@ def _objective_prior(mle, precision_, alpha):
     """
     p = precision_.shape[0]
     cost = - 2. * log_likelihood(mle, precision_) + p * np.log(2 * np.pi)
-    cost += (np.sum(alpha * np.abs(precision_))
-             - np.abs(np.diag(precision_)).sum())
+    cost += np.sum(np.abs(alpha * precision_))
+            #  - np.abs(np.diag(precision_)).sum())
     return cost
 
 
@@ -1375,8 +1375,8 @@ def _dual_gap_prior(emp_cov, precision_, alpha):
     """
     gap = np.sum(emp_cov * precision_)
     gap -= precision_.shape[0]
-    gap += (np.sum(alpha * np.abs(precision_))
-            - np.abs(np.diag(precision_)).sum())
+    gap += np.sum(np.abs(alpha * precision_))
+            # - np.abs(np.diag(precision_)).sum())
     return gap
 
 
@@ -1527,11 +1527,11 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
                                 check_random_state(None), False)
                         # print(i, idx, gap_enet, tol_enet, n_iter_enet)
                         # print(wmax)
-                        np.savez('/volatile2/mehdi/tmp/cd_prior_' + str(idx),
-                                 coefs=coefs, alpha=sub_alpha,
-                                 sub_covariance=sub_covariance,
-                                 row=row, idx=idx, n_features=n_features,
-                                 precision=precision_, max_iter=max_iter)
+                        # np.savez('/volatile2/mehdi/tmp/cd_prior_' + str(idx),
+                        #          coefs=coefs, alpha=sub_alpha,
+                        #          sub_covariance=sub_covariance,
+                        #          row=row, idx=idx, n_features=n_features,
+                        #          precision=precision_, max_iter=max_iter)
                     else:
                         # Use LARS
                         _, _, coefs = lars_path(
@@ -1554,7 +1554,8 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
             cost = _objective_prior(emp_cov, precision_, alpha)
             if verbose:
                 print(
-                    '[graph_lasso] Iteration % 3i, cost % 3.2e, dual gap %.3e'
+                    '[graph_lasso_prior]'
+                    ' Iteration % 3i, cost % 3.2e, dual gap %.3e'
                     % (i, cost, d_gap))
             if return_costs:
                 costs.append((cost, d_gap))
@@ -1564,7 +1565,8 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
                 raise FloatingPointError('Non SPD result: the system is '
                                          'too ill-conditioned for this solver')
         else:
-            warnings.warn('graph_lasso: did not converge after %i iteration:'
+            warnings.warn('graph_lasso_prior:'
+                          ' did not converge after %i iteration:'
                           ' dual gap: %.3e' % (max_iter, d_gap),
                           ConvergenceWarning)
     except FloatingPointError as e:
