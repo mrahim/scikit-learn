@@ -1436,21 +1436,21 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
     """
     alpha = alpha_matrix
     _, n_features = emp_cov.shape
-    if alpha == 0:
-        if return_costs:
-            precision_ = linalg.inv(emp_cov)
-            cost = - 2. * log_likelihood(emp_cov, precision_)
-            cost += n_features * np.log(2 * np.pi)
-            d_gap = np.sum(emp_cov * precision_) - n_features
-            if return_n_iter:
-                return emp_cov, precision_, (cost, d_gap), 0
-            else:
-                return emp_cov, precision_, (cost, d_gap)
-        else:
-            if return_n_iter:
-                return emp_cov, linalg.inv(emp_cov), 0
-            else:
-                return emp_cov, linalg.inv(emp_cov)
+    # if alpha == 0:
+    #     if return_costs:
+    #         precision_ = linalg.inv(emp_cov)
+    #         cost = - 2. * log_likelihood(emp_cov, precision_)
+    #         cost += n_features * np.log(2 * np.pi)
+    #         d_gap = np.sum(emp_cov * precision_) - n_features
+    #         if return_n_iter:
+    #             return emp_cov, precision_, (cost, d_gap), 0
+    #         else:
+    #             return emp_cov, precision_, (cost, d_gap)
+    #     else:
+    #         if return_n_iter:
+    #             return emp_cov, linalg.inv(emp_cov), 0
+    #         else:
+    #             return emp_cov, linalg.inv(emp_cov)
     if cov_init is None:
         covariance_ = emp_cov.copy()
     else:
@@ -1482,12 +1482,13 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
                 sub_covariance = np.ascontiguousarray(
                     covariance_[indices != idx].T[indices != idx])
                 row = emp_cov[idx, indices != idx]
+                sub_alpha = alpha[indices != idx, idx]
                 with np.errstate(**errors):
                     if mode == 'cd':
                         # Use coordinate descent
                         coefs = -(precision_[indices != idx, idx]
                                   / (precision_[idx, idx] + 1000 * eps))
-                        coefs, _, _, _ = cd_fast.enet_coordinate_descent_gram(
+                        coefs, _, _, _ = cd_fast.enet_coordinate_descent_gram_prior(
                             coefs, alpha, 0, sub_covariance, row, row,
                             max_iter, enet_tol, check_random_state(None), False)
                         np.savez('/volatile2/mehdi/tmp/cd_prior_' + str(idx),

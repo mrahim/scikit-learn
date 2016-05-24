@@ -926,8 +926,13 @@ def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta
 
                 # Lipschitz ?
                 # replace alpha by alphamax ?
-                if (dual_norm_XtA > alpha):
-                    const = alpha / dual_norm_XtA
+                alpha_sum = 0.0
+                for ii in range(n_features):
+                    alpha_sum += alpha[ii]
+                alpha_sum /= n_features
+                # if (dual_norm_XtA > alpha):
+                if (dual_norm_XtA > alpha_sum):
+                    const = alpha_sum / dual_norm_XtA
                     A_norm2 = R_norm2 * (const ** 2)
                     gap = 0.5 * (R_norm2 + A_norm2)
                 else:
@@ -936,9 +941,14 @@ def enet_coordinate_descent_gram_prior(double[:] w, double[:] alpha, double beta
 
                 # The call to dasum is equivalent to the L1 norm of w
                 # replace alpha by alpha[ii] in dasum
-                gap += (alpha * dasum(n_features, &w[0], 1) -
-                        const * y_norm2 +  const * q_dot_w +
-                        0.5 * beta * (1 + const ** 2) * w_norm2)
+                l1_sum = 0.0
+                for ii in range(n_features):
+                    l1_sum += alpha[ii] * w[ii]
+                gap += l1_sum - const * y_norm2 + const * q_dot_w +
+                       0.5 * beta * (1 + const ** 2) * w_norm2)
+                # gap += (alpha * dasum(n_features, &w[0], 1) -
+                #         const * y_norm2 +  const * q_dot_w +
+                #         0.5 * beta * (1 + const ** 2) * w_norm2)
 
                 if gap < tol:
                     # return if we reached desired tolerance
