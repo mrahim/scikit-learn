@@ -509,7 +509,6 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
     cdef double[:] H = np.dot(Q, w)
 
     cdef double[:] XtA = np.zeros(n_features)
-    cdef double[:] X_dbg = np.zeros(max_iter)
     cdef double tmp
     cdef double w_ii
     cdef double d_w_max
@@ -593,7 +592,6 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                 else:
                     dual_norm_XtA = abs_max(n_features, XtA_ptr)
 
-                X_dbg[n_iter] = dual_norm_XtA
                 # temp = np.sum(w * H)
                 tmp = 0.0
                 for ii in range(n_features):
@@ -623,7 +621,7 @@ def enet_coordinate_descent_gram(double[:] w, double alpha, double beta,
                     # return if we reached desired tolerance
                     break
 
-    return np.asarray(w), gap, tol, n_iter + 1, np.asarray(X_dbg)
+    return np.asarray(w), gap, tol, n_iter + 1
 
 
 @cython.boundscheck(False)
@@ -841,7 +839,6 @@ def enet_coordinate_descent_gram_prior(double[:] w,
     cdef double[:] H = np.dot(Q, w)
 
     cdef double[:] XtA = np.zeros(n_features)
-    cdef double[:] X_dbg = np.zeros(max_iter)
     cdef double f_dbg
     cdef double tmp
     cdef double w_ii
@@ -910,7 +907,6 @@ def enet_coordinate_descent_gram_prior(double[:] w,
                 if fabs(w[ii]) > w_max:
                     w_max = fabs(w[ii])
 
-            # XXX X_dbg[n_iter] = (d_w_max / w_max)
 
             if w_max == 0.0 or d_w_max / w_max < d_w_tol or n_iter == max_iter - 1:
                 # the biggest coordinate update of this iteration was smaller than
@@ -928,7 +924,6 @@ def enet_coordinate_descent_gram_prior(double[:] w,
                 else:
                     dual_norm_XtA = abs_max(n_features, XtA_ptr)
 
-                X_dbg[n_iter] = dual_norm_XtA
                 # temp = np.sum(w * H)
                 tmp = 0.0
                 for ii in range(n_features):
@@ -964,4 +959,4 @@ def enet_coordinate_descent_gram_prior(double[:] w,
                     # return if we reached desired tolerance
                     break
 
-    return np.asarray(w), gap, tol, n_iter + 1, np.asarray(X_dbg)
+    return np.asarray(w), gap, tol, n_iter + 1

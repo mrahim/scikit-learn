@@ -212,11 +212,11 @@ def graph_lasso(emp_cov, alpha, cov_init=None, mode='cd', tol=1e-4,
                         # Use coordinate descent
                         coefs = -(precision_[indices != idx, idx]
                                   / (precision_[idx, idx] + 1000 * eps))
-                        coefs, gap_enet, tol_enet, iter_enet, wmax = cd_fast.enet_coordinate_descent_gram(
-                            coefs, alpha, 0, sub_covariance, row, row,
-                            max_iter, enet_tol, check_random_state(None), False)
-                        print(i, idx, gap_enet, tol_enet, iter_enet)
-                        # print(wmax)
+                        coefs, gap_enet, tol_enet, iter_enet = \
+                            cd_fast.enet_coordinate_descent_gram(
+                                coefs, alpha, 0, sub_covariance, row, row,
+                                max_iter, enet_tol, check_random_state(None),
+                                False)
                     else:
                         # Use LARS
                         _, _, coefs = lars_path(
@@ -705,10 +705,10 @@ def _objective2(mle, precision_, alpha, beta):
     penalisation term to promote sparsity
     """
     p = precision_.shape[0]
-    cost = - 2. * log_likelihood(mle, precision_) + p * np.log(2 * np.pi)
+    cost = - 2. * log_likelihood(mle, precision_) + 2 * p * np.log(2 * np.pi)
     cost += alpha * (np.abs(precision_).sum()
                      - np.abs(np.diag(precision_)).sum())
-    # cost += beta * np.sum(precision_**2)
+    cost += beta * np.sum(precision_ * precision_)
     return cost
 
 
@@ -722,7 +722,7 @@ def _dual_gap2(emp_cov, precision_, alpha, beta):
     gap -= precision_.shape[0]
     gap += alpha * (np.abs(precision_).sum()
                     - np.abs(np.diag(precision_)).sum())
-     # gap += beta * np.sum(precision_**2)
+    gap += beta * np.sum(precision_ * precision_)
     return gap
 
 
@@ -865,10 +865,11 @@ def graph_lasso2(emp_cov, alpha, beta, cov_init=None, mode='cd', tol=1e-4,
                         # Use coordinate descent
                         coefs = -(precision_[indices != idx, idx]
                                   / (precision_[idx, idx] + 1000 * eps))
-                        coefs, _, _, _, _ = cd_fast.enet_coordinate_descent_gram(
-                            coefs, alpha, 0, sub_covariance, row, row,
-                            max_iter, enet_tol, check_random_state(None),
-                            False)
+                        coefs, _, _, _ = \
+                            cd_fast.enet_coordinate_descent_gram(
+                                coefs, alpha, beta, sub_covariance, row, row,
+                                max_iter, enet_tol, check_random_state(None),
+                                False)
                     else:
                         # Use LARS
                         _, _, coefs = lars_path(
@@ -890,7 +891,7 @@ def graph_lasso2(emp_cov, alpha, beta, cov_init=None, mode='cd', tol=1e-4,
             cost = _objective2(emp_cov, precision_, alpha, beta)
             if verbose:
                 print(
-                    '[graph_lasso] Iteration % 3i, cost % 3.2e, dual gap %.3e'
+                    '[graph_lasso2] Iteration % 3i, cost % 3.2e, dual gap %.3e'
                     % (i, cost, d_gap))
             if return_costs:
                 costs.append((cost, d_gap))
@@ -900,7 +901,7 @@ def graph_lasso2(emp_cov, alpha, beta, cov_init=None, mode='cd', tol=1e-4,
                 raise FloatingPointError('Non SPD result: the system is '
                                          'too ill-conditioned for this solver')
         else:
-            warnings.warn('graph_lasso: did not converge after %i iteration:'
+            warnings.warn('graph_lasso2: did not converge after %i iteration:'
                           ' dual gap: %.3e' % (max_iter, d_gap),
                           ConvergenceWarning)
     except FloatingPointError as e:
@@ -1508,7 +1509,6 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
         # be robust to the max_iter=0 edge case, see:
         # https://github.com/scikit-learn/scikit-learn/issues/4134
         d_gap = np.inf
-        precision_path_ = list()
         for i in range(max_iter):
             for idx in range(n_features):
                 sub_covariance = np.ascontiguousarray(
@@ -1520,18 +1520,11 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
                         # Use coordinate descent
                         coefs = -(precision_[indices != idx, idx]
                                   / (precision_[idx, idx] + 1000 * eps))
-                        coefs, gap_enet, tol_enet, n_iter_enet, wmax = \
+                        coefs, gap_enet, tol_enet, n_iter_enet = \
                             cd_fast.enet_coordinate_descent_gram_prior(
                                 coefs, sub_alpha, 0, sub_covariance, row, row,
                                 max_iter, enet_tol,
                                 check_random_state(None), False)
-                        # print(i, idx, gap_enet, tol_enet, n_iter_enet)
-                        # print(wmax)
-                        # np.savez('/volatile2/mehdi/tmp/cd_prior_' + str(idx),
-                        #          coefs=coefs, alpha=sub_alpha,
-                        #          sub_covariance=sub_covariance,
-                        #          row=row, idx=idx, n_features=n_features,
-                        #          precision=precision_, max_iter=max_iter)
                     else:
                         # Use LARS
                         _, _, coefs = lars_path(
@@ -1546,7 +1539,6 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
                                                    * coefs)
                 precision_[idx, indices != idx] = (- precision_[idx, idx]
                                                    * coefs)
-                precision_path_.append(precision_)
                 coefs = np.dot(sub_covariance, coefs)
                 covariance_[idx, indices != idx] = coefs
                 covariance_[indices != idx, idx] = coefs
@@ -1576,7 +1568,7 @@ def graph_lasso_prior(emp_cov, alpha_matrix, cov_init=None,
 
     if return_costs:
         if return_n_iter:
-            return covariance_, precision_, costs, i + 1, precision_path_
+            return covariance_, precision_, costs, i + 1
         else:
             return covariance_, precision_, costs
     else:
@@ -1665,9 +1657,10 @@ class GraphLassoPrior(EmpiricalCovariance):
             self.location_ = X.mean(0)
         emp_cov = empirical_covariance(
             X, assume_centered=self.assume_centered)
-        self.covariance_, self.precision_, self.cost_, self.n_iter_, self.precision_path_ = graph_lasso_prior(
-            emp_cov, alpha_matrix=self.alpha_matrix, mode=self.mode,
-            tol=self.tol, return_costs=True,
-            enet_tol=self.enet_tol, max_iter=self.max_iter,
-            verbose=self.verbose, return_n_iter=True)
+        self.covariance_, self.precision_, self.cost_, self.n_iter_ = \
+            graph_lasso_prior(emp_cov,
+                              alpha_matrix=self.alpha_matrix, mode=self.mode,
+                              tol=self.tol, return_costs=True,
+                              enet_tol=self.enet_tol, max_iter=self.max_iter,
+                              verbose=self.verbose, return_n_iter=True)
         return self
