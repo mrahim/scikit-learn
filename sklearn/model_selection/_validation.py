@@ -983,6 +983,7 @@ def permutation_test_scores(estimator, X, y, labels=None, cv=None,
     # independent, and that it is pickle-able.
     scores = _test_scores(clone(estimator), X, y, labels, cv, scorer,
                           n_jobs=n_jobs)
+    score = np.mean(scores)
     permutation_scores = Parallel(n_jobs=n_jobs, verbose=verbose)(
         delayed(_permutation_test_score)(
             clone(estimator), X, _shuffle(y, labels, random_state),
