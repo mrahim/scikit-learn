@@ -953,13 +953,13 @@ def validation_curve(estimator, X, y, param_name, param_range, groups=None,
 # XXX : for experiment purposes only
 ##############################################################################
 
+def _iteration(estimator, X, y, train, test):
+    estimator.fit(X[train], y[train])
+    return scorer(estimator, X[test], y[test])
+
+
 def _test_scores(estimator, X, y, labels, cv, scorer, n_jobs=1):
     """Auxiliary function for permutation_test_score"""
-
-    def _iteration(estimator, X, y, train, test):
-        estimator.fit(X[train], y[train])
-        return scorer(estimator, X[test], y[test])
-
     scores = Parallel(n_jobs=n_jobs)(
         delayed(_iteration)(
             estimator, X, y, train, test)
