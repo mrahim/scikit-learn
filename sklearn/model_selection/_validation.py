@@ -30,7 +30,7 @@ from ..exceptions import FitFailedWarning
 from ._split import check_cv, _safe_split
 
 __all__ = ['cross_val_score', 'cross_val_predict', 'permutation_test_score',
-           'learning_curve', 'validation_curve']
+           'learning_curve', 'validation_curve', 'permutation_test_scores']
 
 
 def cross_val_score(estimator, X, y=None, groups=None, scoring=None, cv=None,
@@ -947,3 +947,46 @@ def validation_curve(estimator, X, y, param_name, param_range, groups=None,
     out = out.reshape(n_cv_folds, n_params, 2).transpose((2, 1, 0))
 
     return out[0], out[1]
+
+
+##############################################################################
+# XXX : for experiment purposes only
+##############################################################################
+
+def _test_scores(estimator, X, y, labels, cv, scorer, n_jobs=1):
+    """Auxiliary function for permutation_test_score"""
+
+    def _iteration(estimator, X, y, train, test):
+        estimator.fit(X[train], y[train])
+        return scorer(estimator, X[test], y[test])
+
+    scores = Parallel(n_jobs=n_jobs)(
+        delayed(_iteration)(
+            estimator, X, y, train, test)
+        for train, test in cv.split(X, y, labels)
+    )
+    return scores
+
+
+def permutation_test_scores(estimator, X, y, labels=None, cv=None,
+                            n_permutations=100, n_jobs=1, random_state=0,
+                            verbose=0, scoring=None):
+    """Returns all scores rather than mean one.
+    """
+    X, y, labels = indexable(X, y, labels)
+
+    cv = check_cv(cv, y, classifier=is_classifier(estimator))
+    scorer = check_scoring(estimator, scoring=scoring)
+    random_state = check_random_state(random_state)
+
+    # We clone the estimator to make sure that all the folds are
+    # independent, and that it is pickle-able.
+    scores = _test_scores(clone(estimator), X, y, labels, cv, scorer)
+    permutation_scores = Parallel(n_jobs=n_jobs, verbose=verbose)(
+        delayed(_permutation_test_score)(
+            clone(estimator), X, _shuffle(y, labels, random_state),
+            labels, cv, scorer)
+        for _ in range(n_permutations))
+    permutation_scores = np.array(permutation_scores)
+    pvalue = (np.sum(permutation_scores >= score) + 1.0) / (n_permutations + 1)
+    return scores, permutation_scores, pvalue

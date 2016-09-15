@@ -17,7 +17,7 @@ from ._split import check_cv
 from ._validation import cross_val_score
 from ._validation import cross_val_predict
 from ._validation import learning_curve
-from ._validation import permutation_test_score
+from ._validation import permutation_test_score, permutation_test_scores
 from ._validation import validation_curve
 
 from ._search import GridSearchCV
@@ -49,5 +49,6 @@ __all__ = ('BaseCrossValidator',
            'fit_grid_point',
            'learning_curve',
            'permutation_test_score',
+           'permutation_test_scores',
            'train_test_split',
            'validation_curve')
