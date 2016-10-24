@@ -369,7 +369,8 @@ def explained_variance_score(y_true, y_pred,
 
 def r2_score(y_true, y_pred,
              sample_weight=None,
-             multioutput=None):
+             multioutput=None,
+             y_mean_train=None,):
     """R^2 (coefficient of determination) regression score function.
 
     Best possible score is 1.0 and it can be negative (because the
@@ -451,9 +452,13 @@ def r2_score(y_true, y_pred,
 
     numerator = (weight * (y_true - y_pred) ** 2).sum(axis=0,
                                                       dtype=np.float64)
-    denominator = (weight * (y_true - np.average(
-        y_true, axis=0, weights=sample_weight)) ** 2).sum(axis=0,
-                                                          dtype=np.float64)
+    if y_mean_train is not None:
+        y_mean = y_mean_train
+    else:
+        y_mean = np.average(
+            y_true, axis=0, weights=sample_weight)
+    denominator = (weight * (y_true - y_mean) ** 2).sum(axis=0,
+                                                        dtype=np.float64)
     nonzero_denominator = denominator != 0
     nonzero_numerator = numerator != 0
     valid_score = nonzero_denominator & nonzero_numerator
