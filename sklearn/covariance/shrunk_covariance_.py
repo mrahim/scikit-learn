@@ -34,7 +34,7 @@ class GeneralizedShrunkCovariance(EmpiricalCovariance):
     """
 
     def __init__(self, store_precision=True, assume_centered=False,
-                 shrinkage=0.1):
+                 shrinkage=0.1, structured_estimate=None):
         super(GeneralizedShrunkCovariance, self).__init__(
             store_precision=store_precision,
             assume_centered=assume_centered)
