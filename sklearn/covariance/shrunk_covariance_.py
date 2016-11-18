@@ -22,6 +22,58 @@ from ..externals.six.moves import xrange
 from ..utils import check_array
 
 
+# GeneralizedShrunkCovariance estimator
+def generalized_shrunk_covariance(emp_cov, shrinkage, structured_estimate):
+    """ Calculates a covariance matrix shrunk with structured_estimate
+    """
+    return (1. - shrinkage) * emp_cov + shrinkage * structured_estimate
+
+
+class GeneralizedShrunkCovariance(EmpiricalCovariance):
+    """Covariance estimator with shrinkage
+    """
+
+    def __init__(self, store_precision=True, assume_centered=False,
+                 shrinkage=0.1):
+        super(GeneralizedShrunkCovariance, self).__init__(
+            store_precision=store_precision,
+            assume_centered=assume_centered)
+        self.shrinkage = shrinkage
+        self.structured_estimate = structured_estimate
+
+    def fit(self, X, y=None):
+        """ Fits the shrunk covariance model
+        according to the given training data and parameters.
+
+        Parameters
+        ----------
+        X : array-like, shape = [n_samples, n_features]
+            Training data, where n_samples is the number of samples
+            and n_features is the number of features.
+
+        y : not used, present for API consistence purpose.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+
+        """
+        X = check_array(X)
+        # Not calling the parent object to fit, to avoid a potential
+        # matrix inversion when setting the precision
+        if self.assume_centered:
+            self.location_ = np.zeros(X.shape[1])
+        else:
+            self.location_ = X.mean(0)
+        covariance = empirical_covariance(
+            X, assume_centered=self.assume_centered)
+        covariance = generalized_shrunk_covariance(
+            covariance, self.shrinkage, self.structured_estimate)
+        self._set_covariance(covariance)
+        return self
+
+
 # ShrunkCovariance estimator
 
 def shrunk_covariance(emp_cov, shrinkage=0.1):
@@ -486,10 +538,10 @@ class OAS(EmpiricalCovariance):
     The formula used here does not correspond to the one given in the
     article. It has been taken from the Matlab program available from the
     authors' webpage (http://tbayes.eecs.umich.edu/yilun/covestimation).
-    In the original article, formula (23) states that 2/p is multiplied by 
+    In the original article, formula (23) states that 2/p is multiplied by
     Trace(cov*cov) in both the numerator and denominator, this operation is omitted
-    in the author's MATLAB program because for a large p, the value of 2/p is so 
-    small that it doesn't affect the value of the estimator. 
+    in the author's MATLAB program because for a large p, the value of 2/p is so
+    small that it doesn't affect the value of the estimator.
 
     Parameters
     ----------
