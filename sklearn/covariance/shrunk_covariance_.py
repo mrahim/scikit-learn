@@ -617,6 +617,88 @@ class OAS(EmpiricalCovariance):
 
 
 # WhitenedLedoitWolf
+def whitened_ledoit_wolf(X, structured_estimate,
+                         assume_centered=False, block_size=1000):
+    """Estimates the shrunk Ledoit-Wolf covariance matrix.
+
+    Read more in the :ref:`User Guide <shrunk_covariance>`.
+
+    Parameters
+    ----------
+    X : array-like, shape (n_samples, n_features)
+        Data from which to compute the covariance estimate
+
+    structured_estimate : array-like, shape (n_features, n_features)
+        Prior covariance
+
+    assume_centered : boolean, default=False
+        If True, data are not centered before computation.
+        Useful to work with data whose mean is significantly equal to
+        zero but is not exactly zero.
+        If False, data are centered before computation.
+
+    block_size : int, default=1000
+        Size of the blocks into which the covariance matrix will be split.
+        This is purely a memory optimization and does not affect results.
+
+    Returns
+    -------
+    shrunk_cov : array-like, shape (n_features, n_features)
+        Shrunk covariance.
+
+    shrinkage : float
+        Coefficient in the convex combination used for the computation
+        of the shrunk estimate.
+
+    Notes
+    -----
+    The regularized (shrunk) covariance is:
+
+    P^.5.dot.(1 - shrinkage)*(P^-.5.dot.cov.dot.P^-.5)
+      + shrinkage * mu * np.identity(n_features)).dot.P^.5
+
+    where mu = trace(cov) / n_features
+
+    """
+    X = np.asarray(X)
+    # for only one feature, the result is the same whatever the shrinkage
+    if len(X.shape) == 2 and X.shape[1] == 1:
+        if not assume_centered:
+            X = X - X.mean()
+        return np.atleast_2d((X ** 2).mean()), 0.
+    if X.ndim == 1:
+        X = np.reshape(X, (1, -1))
+        warnings.warn("Only one sample available. "
+                      "You may want to reshape your data array")
+        n_samples = 1
+        n_features = X.size
+    else:
+        n_samples, n_features = X.shape
+
+    # set prior
+    prior = np.power(structured_estimate, .5)
+    inv_prior = np.linalg.inv(prior)
+    if np.isnan(prior).any():
+        print('[Prior has nans]')
+    if np.isnan(inv_prior).any():
+        print('[invPrior has nans]')
+
+    # get Ledoit-Wolf shrinkage
+    shrinkage = ledoit_wolf_shrinkage(
+        X, assume_centered=assume_centered, block_size=block_size)
+    emp_cov = empirical_covariance(X, assume_centered=assume_centered)
+    mu = np.sum(np.trace(emp_cov)) / n_features
+
+    # whitening wrt inv_prior
+    shrunk_cov = (1. - shrinkage) * inv_prior.dot(emp_cov).dot(inv_prior)
+    shrunk_cov.flat[::n_features + 1] += shrinkage * mu
+
+    # scale back
+    shrunk_cov = prior.dot(shrunk_cov).dot(prior)
+
+    return shrunk_cov, shrinkage
+
+
 class WhitenedLedoitWolf(LedoitWolf):
     """Ledoit-Wolf shrinkage with a transformed empirical covariance
     towards a prior (e.g. population averaged covariance)
@@ -655,14 +737,12 @@ class WhitenedLedoitWolf(LedoitWolf):
         else:
             self.location_ = X.mean(0)
 
-        prior = np.power(self.structured_estimate, -.5)
-        prior1 = np.power(self.structured_estimate, .5)
-
-        covariance, shrinkage = ledoit_wolf(
-            prior.dot(X - self.location_).dot(prior),
+        covariance, shrinkage = whitened_ledoit_wolf(
+            X - self.location_,
+            self.structured_estimate,
             assume_centered=True,
             block_size=self.block_size)
         self.shrinkage_ = shrinkage
-        self._set_covariance(prior1.dot(covariance).dot(prior1))
+        self._set_covariance(covariance)
 
         return self
