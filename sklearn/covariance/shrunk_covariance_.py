@@ -614,3 +614,55 @@ class OAS(EmpiricalCovariance):
         self._set_covariance(covariance)
 
         return self
+
+
+# WhitenedLedoitWolf
+class WhitenedLedoitWolf(LedoitWolf):
+    """Ledoit-Wolf shrinkage with a transformed empirical covariance
+    towards a prior (e.g. population averaged covariance)
+    """
+
+    def __init__(self, structured_estimate, store_precision=True,
+                 assume_centered=False, block_size=1000):
+        super(WhitenedLedoitWolf, self).__init__(
+            store_precision=store_precision,
+            assume_centered=assume_centered)
+        self.block_size = block_size
+        self.structured_estimate = structured_estimate
+
+    def fit(self, X, y=None):
+        """ Fits the Ledoit-Wolf shrunk covariance model
+        according to the given training data, prior, and parameters.
+
+        Parameters
+        ----------
+        X : array-like, shape = [n_samples, n_features]
+            Training data, where n_samples is the number of samples
+            and n_features is the number of features.
+        y : not used, present for API consistence purpose.
+
+        Returns
+        -------
+        self : object
+            Returns self.
+
+        """
+        # Not calling the parent object to fit, to avoid computing the
+        # covariance matrix (and potentially the precision)
+        X = check_array(X)
+        if self.assume_centered:
+            self.location_ = np.zeros(X.shape[1])
+        else:
+            self.location_ = X.mean(0)
+
+        prior = np.power(self.structured_estimate, -.5)
+        prior1 = np.power(self.structured_estimate, .5)
+
+        covariance, shrinkage = ledoit_wolf(
+            prior.dot(X - self.location_).dot(prior),
+            assume_centered=True,
+            block_size=self.block_size)
+        self.shrinkage_ = shrinkage
+        self._set_covariance(prior1.dot(covariance).dot(prior1))
+
+        return self

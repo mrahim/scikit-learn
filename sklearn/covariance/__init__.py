@@ -11,7 +11,8 @@ from .empirical_covariance_ import empirical_covariance, EmpiricalCovariance, \
 from .shrunk_covariance_ import shrunk_covariance, ShrunkCovariance, \
     ledoit_wolf, ledoit_wolf_shrinkage, \
     LedoitWolf, oas, OAS, \
-    generalized_shrunk_covariance, GeneralizedShrunkCovariance
+    generalized_shrunk_covariance, GeneralizedShrunkCovariance, \
+    WhitenedLedoitWolf
 from .robust_covariance import fast_mcd, MinCovDet
 from .graph_lasso_ import graph_lasso, GraphLasso, GraphLassoCV
 from .outlier_detection import EllipticEnvelope
