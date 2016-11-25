@@ -700,33 +700,25 @@ def whitened_ledoit_wolf(X, structured_estimate,
     else:
         n_samples, n_features = X.shape
 
-    # set prior
-
-    vals_prior, vecs_prior = np.linalg.eigh(structured_estimate)
-    prior_sqrt = _form_symmetric(np.sqrt, vals_prior, vecs_prior)
-    prior_inv_sqrt = _form_symmetric(np.sqrt, 1. / vals_prior, vecs_prior)
-
-    # prior = np.linalg.sqrtm(structured_estimate)
-    # inv_prior = np.linalg.inv(prior)
-    prior = prior_sqrt
-    inv_prior = prior_inv_sqrt
-    if np.isnan(prior).any():
-        print('[Prior has nans]')
-    if np.isnan(inv_prior).any():
-        print('[invPrior has nans]')
-
     # get Ledoit-Wolf shrinkage
     shrinkage = ledoit_wolf_shrinkage(
         X, assume_centered=assume_centered, block_size=block_size)
     emp_cov = empirical_covariance(X, assume_centered=assume_centered)
     mu = np.sum(np.trace(emp_cov)) / n_features
 
+    # set prior
+    vals_prior, vecs_prior = np.linalg.eigh(structured_estimate)
+    prior_sqrt = _form_symmetric(np.sqrt, vals_prior, vecs_prior)
+    prior_inv_sqrt = _form_symmetric(np.sqrt, 1. / vals_prior, vecs_prior)
+    # prior_sqrt = np.linalg.sqrtm(structured_estimate)
+    # prior_inv_sqrt = np.linalg.inv(prior_sqrt)
+
     # whitening wrt inv_prior
-    shrunk_cov = (1. - shrinkage) * inv_prior.dot(emp_cov).dot(inv_prior)
+    shrunk_cov = (1. - shrinkage) * prior_inv_sqrt.dot(emp_cov).dot(prior_inv_sqrt)
     shrunk_cov.flat[::n_features + 1] += shrinkage * mu
 
     # scale back
-    shrunk_cov = prior.dot(shrunk_cov).dot(prior)
+    shrunk_cov = prior_sqrt.dot(shrunk_cov).dot(prior_sqrt)
 
     return shrunk_cov, shrinkage
 
