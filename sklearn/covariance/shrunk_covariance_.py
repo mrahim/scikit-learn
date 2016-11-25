@@ -616,6 +616,31 @@ class OAS(EmpiricalCovariance):
         return self
 
 
+# utils function
+def _form_symmetric(function, eigenvalues, eigenvectors):
+    """Return the symmetric matrix with the given eigenvectors and
+    eigenvalues transformed by function.
+
+    Parameters
+    ----------
+    function : function numpy.ndarray -> numpy.ndarray
+        The transform to apply to the eigenvalues.
+
+    eigenvalues : numpy.ndarray, shape (n_features, )
+        Input argument of the function.
+
+    eigenvectors : numpy.ndarray, shape (n_features, n_features)
+        Unitary matrix.
+
+    Returns
+    -------
+    output : numpy.ndarray, shape (n_features, n_features)
+        The symmetric matrix obtained after transforming the eigenvalues, while
+        keeping the same eigenvectors.
+    """
+    return np.dot(eigenvectors * function(eigenvalues), eigenvectors.T)
+
+
 # WhitenedLedoitWolf
 def whitened_ledoit_wolf(X, structured_estimate,
                          assume_centered=False, block_size=1000):
@@ -676,8 +701,15 @@ def whitened_ledoit_wolf(X, structured_estimate,
         n_samples, n_features = X.shape
 
     # set prior
-    prior = np.power(structured_estimate, .5)
-    inv_prior = np.linalg.inv(prior)
+
+    vals_prior, vecs_prior = np.linalg.eigh(structured_estimate)
+    prior_sqrt = _form_symmetric(np.sqrt, vals_prior, vecs_prior)
+    prior_inv_sqrt = _form_symmetric(np.sqrt, 1. / vals_prior, vecs_prior)
+
+    # prior = np.linalg.sqrtm(structured_estimate)
+    # inv_prior = np.linalg.inv(prior)
+    prior = prior_sqrt
+    inv_prior = prior_inv_sqrt
     if np.isnan(prior).any():
         print('[Prior has nans]')
     if np.isnan(inv_prior).any():
