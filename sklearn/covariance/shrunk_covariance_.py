@@ -718,7 +718,7 @@ def whitened_ledoit_wolf(X, structured_estimate, assume_centered=False,
 
     if shrink_eigenvalues:
         u, s, v = np.linalg.svd(whitened_matrix)
-        shrunk_s = np.power(s, shrinkage)
+        shrunk_s = np.power(s, 1. - shrinkage)
         whitened_matrix = u.dot(np.diag(shrunk_s)).dot(v)
 
     shrunk_cov = (1. - shrinkage) * whitened_matrix
