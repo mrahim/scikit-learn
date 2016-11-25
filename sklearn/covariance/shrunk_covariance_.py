@@ -642,8 +642,8 @@ def _form_symmetric(function, eigenvalues, eigenvectors):
 
 
 # WhitenedLedoitWolf
-def whitened_ledoit_wolf(X, structured_estimate,
-                         assume_centered=False, block_size=1000):
+def whitened_ledoit_wolf(X, structured_estimate, assume_centered=False,
+                         block_size=1000, shrink_eigenvalues=False):
     """Estimates the shrunk Ledoit-Wolf covariance matrix.
 
     Read more in the :ref:`User Guide <shrunk_covariance>`.
@@ -714,7 +714,14 @@ def whitened_ledoit_wolf(X, structured_estimate,
     # prior_inv_sqrt = np.linalg.inv(prior_sqrt)
 
     # whitening wrt inv_prior
-    shrunk_cov = (1. - shrinkage) * prior_inv_sqrt.dot(emp_cov).dot(prior_inv_sqrt)
+    whitened_matrix = prior_inv_sqrt.dot(emp_cov).dot(prior_inv_sqrt)
+
+    if shrink_eigenvalues:
+        u, s, v = np.linalg.svd(whitened_matrix)
+        shrunk_s = np.power(s, shrinkage)
+        whitened_matrix = u.dot(np.diag(shrunk_s)).dot(v)
+
+    shrunk_cov = (1. - shrinkage) * whitened_matrix
     shrunk_cov.flat[::n_features + 1] += shrinkage * mu
 
     # scale back
@@ -729,12 +736,14 @@ class WhitenedLedoitWolf(LedoitWolf):
     """
 
     def __init__(self, structured_estimate, store_precision=True,
-                 assume_centered=False, block_size=1000):
+                 assume_centered=False, block_size=1000,
+                 shrink_eigenvalues=False):
         super(WhitenedLedoitWolf, self).__init__(
             store_precision=store_precision,
             assume_centered=assume_centered)
         self.block_size = block_size
         self.structured_estimate = structured_estimate
+        self.shrink_eigenvalues = shrink_eigenvalues
 
     def fit(self, X, y=None):
         """ Fits the Ledoit-Wolf shrunk covariance model
@@ -765,7 +774,8 @@ class WhitenedLedoitWolf(LedoitWolf):
             X - self.location_,
             self.structured_estimate,
             assume_centered=True,
-            block_size=self.block_size)
+            block_size=self.block_size,
+            shrink_eigenvalues=self.shrink_eigenvalues)
         self.shrinkage_ = shrinkage
         self._set_covariance(covariance)
 
