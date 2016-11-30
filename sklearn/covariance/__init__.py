@@ -12,7 +12,7 @@ from .shrunk_covariance_ import shrunk_covariance, ShrunkCovariance, \
     ledoit_wolf, ledoit_wolf_shrinkage, \
     LedoitWolf, oas, OAS, \
     generalized_shrunk_covariance, GeneralizedShrunkCovariance, \
-    WhitenedLedoitWolf
+    WhitenedLedoitWolf, GeneralizedShrunkCovarianceCV
 from .robust_covariance import fast_mcd, MinCovDet
 from .graph_lasso_ import graph_lasso, GraphLasso, GraphLassoCV
 from .outlier_detection import EllipticEnvelope
@@ -27,6 +27,7 @@ __all__ = ['EllipticEnvelope',
            'OAS',
            'ShrunkCovariance',
            'GeneralizedShrunkCovariance',
+           'GeneralizedShrunkCovarianceCV',
            'empirical_covariance',
            'fast_mcd',
            'graph_lasso',

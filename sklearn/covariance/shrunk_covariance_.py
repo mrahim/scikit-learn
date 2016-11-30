@@ -20,9 +20,11 @@ import numpy as np
 from .empirical_covariance_ import empirical_covariance, EmpiricalCovariance
 from ..externals.six.moves import xrange
 from ..utils import check_array
+from ..externals.joblib import Parallel, delayed
 
 
 # GeneralizedShrunkCovariance estimator
+
 def generalized_shrunk_covariance(emp_cov, shrinkage, structured_estimate):
     """ Calculates a covariance matrix shrunk with structured_estimate
     """
@@ -38,7 +40,7 @@ class GeneralizedShrunkCovariance(EmpiricalCovariance):
         super(GeneralizedShrunkCovariance, self).__init__(
             store_precision=store_precision,
             assume_centered=assume_centered)
-        self.shrinkage = shrinkage
+        self.shrinkage_ = shrinkage
         self.structured_estimate = structured_estimate
 
     def fit(self, X, y=None):
@@ -69,7 +71,7 @@ class GeneralizedShrunkCovariance(EmpiricalCovariance):
         covariance = empirical_covariance(
             X, assume_centered=self.assume_centered)
         covariance = generalized_shrunk_covariance(
-            covariance, self.shrinkage, self.structured_estimate)
+            covariance, self.shrinkage_, self.structured_estimate)
         self._set_covariance(covariance)
         return self
 
@@ -770,13 +772,53 @@ class WhitenedLedoitWolf(LedoitWolf):
         else:
             self.location_ = X.mean(0)
 
-        covariance, shrinkage = whitened_ledoit_wolf(
-            X - self.location_,
-            self.structured_estimate,
+        # whitening goes here
+        vals_prior, vecs_prior = np.linalg.eigh(self.structured_estimate)
+        prior_sqrt = _form_symmetric(np.sqrt, vals_prior, vecs_prior)
+        prior_inv_sqrt = _form_symmetric(np.sqrt, 1. / vals_prior, vecs_prior)
+
+        # whitening wrt inv_prior
+        prior_inv_X = np.dot(X - self.location_, prior_inv_sqrt)
+        # whitened_matrix = prior_inv_X.dot(prior_inv_X.T)
+
+        covariance, shrinkage = ledoit_wolf(
+            prior_inv_X,
             assume_centered=True,
-            block_size=self.block_size,
-            shrink_eigenvalues=self.shrink_eigenvalues)
+            block_size=self.block_size)
+
+        # scale-back
+        covariance = prior_sqrt.dot(covariance).dot(prior_sqrt)
+
         self.shrinkage_ = shrinkage
         self._set_covariance(covariance)
 
         return self
+
+
+def score_covariance(Xtrain, Xtest, shrinkage, structured_estimate):
+    gsc = GeneralizedShrunkCovariance(
+        shrinkage=shrinkage,
+        structured_estimate=structured_estimate)
+    gsc.fit(Xtrain)
+    return gsc.score(Xtest)
+
+
+# GSC-CV
+class GeneralizedShrunkCovarianceCV:
+    def __init__(self, structured_estimate,
+                 shrinkages=np.linspace(0, 1, 11),
+                 assume_centered=True,
+                 n_jobs=1):
+        self.structured_estimate = structured_estimate
+        self.shrinkages = shrinkages
+        self.n_jobs = n_jobs
+
+    def cross_validation(self, Xtrain, Xtest):
+        cv_scores = Parallel(n_jobs=self.n_jobs)(
+            delayed(score_covariance)
+            (Xtrain, Xtest, shrinkage, self.structured_estimate)
+            for shrinkage in self.shrinkages)
+        self.cv_scores_ = cv_scores
+        self.best_score_ = np.max(cv_scores)
+        self.shrinkage_ = self.shrinkages[np.argmax(cv_scores)]
+        return self.best_score_
