@@ -702,21 +702,31 @@ def whitened_ledoit_wolf(X, structured_estimate, assume_centered=False,
     else:
         n_samples, n_features = X.shape
 
+    # whitening goes here
+    vals_prior, vecs_prior = np.linalg.eigh(structured_estimate)
+    prior_sqrt = _form_symmetric(np.sqrt, vals_prior, vecs_prior)
+    prior_inv_sqrt = _form_symmetric(np.sqrt, 1. / vals_prior, vecs_prior)
+
+    # whitening wrt inv_prior
+    prior_inv_X = np.dot(X, prior_inv_sqrt)
+
     # get Ledoit-Wolf shrinkage
     shrinkage = ledoit_wolf_shrinkage(
-        X, assume_centered=assume_centered, block_size=block_size)
-    emp_cov = empirical_covariance(X, assume_centered=assume_centered)
+        prior_inv_X, assume_centered=assume_centered, block_size=block_size)
+    emp_cov = empirical_covariance(
+        prior_inv_X, assume_centered=assume_centered)
     mu = np.sum(np.trace(emp_cov)) / n_features
 
+    """
     # set prior
     vals_prior, vecs_prior = np.linalg.eigh(structured_estimate)
     prior_sqrt = _form_symmetric(np.sqrt, vals_prior, vecs_prior)
     prior_inv_sqrt = _form_symmetric(np.sqrt, 1. / vals_prior, vecs_prior)
     # prior_sqrt = np.linalg.sqrtm(structured_estimate)
     # prior_inv_sqrt = np.linalg.inv(prior_sqrt)
-
+    """
     # whitening wrt inv_prior
-    whitened_matrix = prior_inv_sqrt.dot(emp_cov).dot(prior_inv_sqrt)
+    whitened_matrix = prior_inv_X.T.dot(prior_inv_X)
 
     if shrink_eigenvalues:
         u, s, v = np.linalg.svd(whitened_matrix)
@@ -788,6 +798,11 @@ class WhitenedLedoitWolf(LedoitWolf):
 
         # scale-back
         covariance = prior_sqrt.dot(covariance).dot(prior_sqrt)
+        """
+        covariance, shrinkage = whitened_ledoit_wolf(
+            X - self.location_, self.structured_estimate,
+            shrink_eigenvalues=self.shrink_eigenvalues)
+        """
 
         self.shrinkage_ = shrinkage
         self._set_covariance(covariance)
