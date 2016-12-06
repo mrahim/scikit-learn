@@ -810,12 +810,15 @@ class WhitenedLedoitWolf(LedoitWolf):
         return self
 
 
-def score_covariance(Xtrain, Xtest, shrinkage, structured_estimate):
+def score_covariance(Xtrain, Xtest, shrinkage, structured_estimate, metric):
     gsc = GeneralizedShrunkCovariance(
         shrinkage=shrinkage,
         structured_estimate=structured_estimate)
     gsc.fit(Xtrain)
-    return gsc.score(Xtest)
+    if metric == 'mse':
+        return gsc.error_norm(empirical_covariance(Xtest))
+    else:
+        return gsc.score(Xtest)
 
 
 # GSC-CV
@@ -823,17 +826,24 @@ class GeneralizedShrunkCovarianceCV:
     def __init__(self, structured_estimate,
                  shrinkages=np.linspace(0, 1, 11),
                  assume_centered=True,
+                 metric='loglikelihood',
                  n_jobs=1):
         self.structured_estimate = structured_estimate
         self.shrinkages = shrinkages
         self.n_jobs = n_jobs
+        self.metric = metric
 
     def cross_validation(self, Xtrain, Xtest):
         cv_scores = Parallel(n_jobs=self.n_jobs)(
             delayed(score_covariance)
-            (Xtrain, Xtest, shrinkage, self.structured_estimate)
+            (Xtrain, Xtest, shrinkage, self.structured_estimate,
+             self.metric)
             for shrinkage in self.shrinkages)
         self.cv_scores_ = cv_scores
-        self.best_score_ = np.max(cv_scores)
-        self.shrinkage_ = self.shrinkages[np.argmax(cv_scores)]
+        if self.metric == 'mse':
+            self.best_score_ = np.min(cv_scores)
+            self.shrinkage_ = self.shrinkages[np.argmin(cv_scores)]
+        else:
+            self.best_score_ = np.max(cv_scores)
+            self.shrinkage_ = self.shrinkages[np.argmax(cv_scores)]
         return self.best_score_
