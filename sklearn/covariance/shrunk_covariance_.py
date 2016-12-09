@@ -25,7 +25,7 @@ from ..externals.joblib import Parallel, delayed
 
 # GeneralizedShrunkCovariance estimator
 
-def generalized_shrunk_covariance(emp_cov, shrinkage, structured_estimate
+def generalized_shrunk_covariance(emp_cov, shrinkage, structured_estimate,
                                   scaling=False):
     """ Calculates a covariance matrix shrunk with structured_estimate
     """
