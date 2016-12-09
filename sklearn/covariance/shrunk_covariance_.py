@@ -25,9 +25,14 @@ from ..externals.joblib import Parallel, delayed
 
 # GeneralizedShrunkCovariance estimator
 
-def generalized_shrunk_covariance(emp_cov, shrinkage, structured_estimate):
+def generalized_shrunk_covariance(emp_cov, shrinkage, structured_estimate
+                                  scaling=False):
     """ Calculates a covariance matrix shrunk with structured_estimate
     """
+    if scaling:
+        n_features = emp_cov.shape[0]
+        mu = np.trace(emp_cov) / n_features
+        return (1 - shrinkage) * emp_cov + shrinkage * mu * structured_estimate
     return (1. - shrinkage) * emp_cov + shrinkage * structured_estimate
 
 
@@ -36,12 +41,13 @@ class GeneralizedShrunkCovariance(EmpiricalCovariance):
     """
 
     def __init__(self, store_precision=True, assume_centered=False,
-                 shrinkage=0.1, structured_estimate=None):
+                 shrinkage=0.1, structured_estimate=None, scaling=False):
         super(GeneralizedShrunkCovariance, self).__init__(
             store_precision=store_precision,
             assume_centered=assume_centered)
         self.shrinkage_ = shrinkage
         self.structured_estimate = structured_estimate
+        self.scaling = scaling
 
     def fit(self, X, y=None):
         """ Fits the shrunk covariance model
@@ -71,7 +77,8 @@ class GeneralizedShrunkCovariance(EmpiricalCovariance):
         covariance = empirical_covariance(
             X, assume_centered=self.assume_centered)
         covariance = generalized_shrunk_covariance(
-            covariance, self.shrinkage_, self.structured_estimate)
+            covariance, self.shrinkage_,
+            self.structured_estimate, self.scaling)
         self._set_covariance(covariance)
         return self
 
