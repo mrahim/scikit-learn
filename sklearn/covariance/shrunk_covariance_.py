@@ -817,10 +817,12 @@ class WhitenedLedoitWolf(LedoitWolf):
         return self
 
 
-def score_covariance(Xtrain, Xtest, shrinkage, structured_estimate, metric):
+def score_covariance(Xtrain, Xtest, shrinkage, structured_estimate, metric,
+                     scaling):
     gsc = GeneralizedShrunkCovariance(
         shrinkage=shrinkage,
-        structured_estimate=structured_estimate)
+        structured_estimate=structured_estimate
+        scaling=scaling)
     gsc.fit(Xtrain)
     if metric == 'mse':
         return gsc.error_norm(empirical_covariance(Xtest))
@@ -834,17 +836,19 @@ class GeneralizedShrunkCovarianceCV:
                  shrinkages=np.linspace(0, 1, 11),
                  assume_centered=True,
                  metric='loglikelihood',
+                 scaling=False,
                  n_jobs=1):
         self.structured_estimate = structured_estimate
         self.shrinkages = shrinkages
         self.n_jobs = n_jobs
         self.metric = metric
+        self.scaling = scaling
 
     def cross_validation(self, Xtrain, Xtest):
         cv_scores = Parallel(n_jobs=self.n_jobs)(
             delayed(score_covariance)
             (Xtrain, Xtest, shrinkage, self.structured_estimate,
-             self.metric)
+             self.metric, self.scaling)
             for shrinkage in self.shrinkages)
         self.cv_scores_ = cv_scores
         if self.metric == 'mse':
