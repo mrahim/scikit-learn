@@ -821,7 +821,7 @@ def score_covariance(Xtrain, Xtest, shrinkage, structured_estimate, metric,
                      scaling):
     gsc = GeneralizedShrunkCovariance(
         shrinkage=shrinkage,
-        structured_estimate=structured_estimate
+        structured_estimate=structured_estimate,
         scaling=scaling)
     gsc.fit(Xtrain)
     if metric == 'mse':
