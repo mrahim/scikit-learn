@@ -10,7 +10,7 @@ from .empirical_covariance_ import empirical_covariance, EmpiricalCovariance, \
     log_likelihood
 from .shrunk_covariance_ import shrunk_covariance, ShrunkCovariance, \
     ledoit_wolf, ledoit_wolf_shrinkage, \
-    LedoitWolf, oas, OAS, \
+    LedoitWolf, oas_shrinkage, oas, OAS, \
     generalized_shrunk_covariance, GeneralizedShrunkCovariance, \
     WhitenedLedoitWolf, GeneralizedShrunkCovarianceCV
 from .robust_covariance import fast_mcd, MinCovDet
@@ -35,5 +35,6 @@ __all__ = ['EllipticEnvelope',
            'ledoit_wolf_shrinkage',
            'log_likelihood',
            'oas',
+           'oas_shrinkage',
            'shrunk_covariance',
            'generalized_shrunk_covariance']

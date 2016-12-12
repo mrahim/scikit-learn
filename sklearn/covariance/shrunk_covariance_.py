@@ -466,6 +466,23 @@ class LedoitWolf(EmpiricalCovariance):
 
 
 # OAS estimator
+def oas_shrinkage(emp_cov, n_samples):
+    """ oas shrinkage on empirical covariance
+    """
+    n_features = emp_cov.shape[0]
+    mu = np.trace(emp_cov) / n_features
+
+    # formula from Chen et al.'s **implementation**
+    alpha = np.mean(emp_cov ** 2)
+    num = alpha + mu ** 2
+    den = (n_samples + 1.) * (alpha - (mu ** 2) / n_features)
+
+    shrinkage = 1. if den == 0 else min(num / den, 1.)
+    shrunk_cov = (1. - shrinkage) * emp_cov
+    shrunk_cov.flat[::n_features + 1] += shrinkage * mu
+
+    return shrunk_cov, shrinkage
+
 
 def oas(X, assume_centered=False):
     """Estimate covariance with the Oracle Approximating Shrinkage algorithm.
