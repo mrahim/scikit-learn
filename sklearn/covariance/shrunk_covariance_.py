@@ -854,15 +854,19 @@ class GeneralizedShrunkCovarianceCV:
                  assume_centered=True,
                  metric='loglikelihood',
                  scaling=False,
-                 n_jobs=1):
+                 n_jobs=1,
+                 verbose=0):
         self.structured_estimate = structured_estimate
         self.shrinkages = shrinkages
         self.n_jobs = n_jobs
         self.metric = metric
         self.scaling = scaling
+        self.verbose = verbose
 
     def cross_validation(self, Xtrain, Xtest):
-        cv_scores = Parallel(n_jobs=self.n_jobs)(
+        if self.verbose > 0:
+            print('[cross_validation]')
+        cv_scores = Parallel(n_jobs=self.n_jobs, verbose=self.verbose)(
             delayed(score_covariance)
             (Xtrain, Xtest, shrinkage, self.structured_estimate,
              self.metric, self.scaling)
